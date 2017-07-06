@@ -1,0 +1,225 @@
+
+     model{
+     
+      #priors
+      #for occupancy model:
+      c2 ~ dnorm( 0, 0.001 ) T( -10, 10 ) # distance to water
+
+      #define intercepts for occupancy model as mean probs:
+      c1 <- log( mu0 / ( 1 - mu0 ) )
+      mu0 ~ dunif( 0, 1 )
+     
+      #random year effect
+      for ( k in 1:K ){  #loop over seasons
+        eps[ k ] ~ dnorm( 0, var0 ) T(-10, 10) 
+      } #K
+     
+      #associated variance of random year effects:     
+      var0 <- 1/ ( sigma0 * sigma0 )
+      sigma0 ~ dunif( 0, 1 )
+     
+      #random year effect
+      for ( i in 1:M ){  #loop over seasons
+        IDeps[ i ] ~ dnorm( 0, var.id ) T(-10, 10) 
+      } #K
+     
+      #associated variance of random year effects:     
+      var.id <- 1/ ( sigma.id * sigma.id )
+      sigma.id ~ dunif( 0, 1 )
+     
+      #for detection model:
+      p ~ dunif( 0, 1 ) #mean detection proability
+     
+      #for reproductive model:
+      #priors for fixed coefficients for distance to water:
+      alpha2 ~ dnorm( 0, 0.001 ) T(-10, 10) #pi1 water coef
+      beta2 ~ dnorm( 0, 0.001 ) T(-10, 10) #pi2 water coef
+
+      #define intercepts for reproductive model as mean probs
+      alpha1 <- log( mu1 / ( 1 - mu1 ) )
+      beta1 <- log( mu2 / ( 1 - mu2 ) )
+      mu1 ~ dunif( 0, 1 )
+      mu2 ~ dunif( 0, 1 )
+    
+      #random nest id effects:
+      for ( i in 1:M ){
+        IDzeta[ i ] ~ dnorm( 0, var1.id ) T(-10, 10) #pi1 covariates
+        IDeta[ i ] ~ dnorm( 0, var2.id ) T(-10, 10) #pi2 covariates
+      }
+
+      #random year effects:
+      for ( k in 1:K ) { #loop over K seasons 
+        zeta[ k ] ~ dnorm( 0, var1 ) T(-10, 10) #pi1 covariates
+        eta[ k ] ~ dnorm( 0, var2 ) T(-10, 10) #pi2 covariates
+      }
+ 
+      #associated variance of random year effects:     
+      var1 <- 1/ ( sigma1 * sigma1 )
+      sigma1 ~ dunif( 0, 1 )
+      var2 <- 1/ ( sigma2 * sigma2 )
+      sigma2 ~ dunif( 0, 1 )
+      #associated variance for random nest id effects:
+      var1.id <- 1/ ( sigma1.id * sigma1.id )
+      sigma1.id ~ dunif( 0, 1 )
+      var2.id <- 1/ ( sigma2.id * sigma2.id )
+      sigma2.id ~ dunif( 0, 1 )
+    
+      #ecological model
+      #for occupancy:
+      for ( k in 1:K ) { #loop over seasons
+        for ( i in 1:M ){ #loop over surveyed nests
+     
+          #prob of occupancy dependent on yearly random effect:
+          logit( psi[ i, k ] ) <- c1 + c2* waterdist[ i ] 
+                              + eps[ k ]  + IDeps[ i ]
+
+        } #close i loop
+     
+        for ( i in 1:surveyedM[ k ] ) { #loop over surveyed nests only
+          z[ MM[ i, k ], k ] ~ dbern( psi[ MM[ i, k ], k ] ) #latent, true occupancy 
+        } #i surveyed nests
+
+        for ( i in 1: notM[ k ] ) { #loop over non-surveyed nests
+          z[ notMM[ i, k ], k ] ~ dbern( 0 ) #latent, true occupancy 
+        }#i nests not surveyed
+     
+      } #k season
+     
+      #for reproductive output:
+      for ( k in 1:K ) { #loop over K seasons 
+        for ( i in 1:M ){ #loop over  nests
+     
+          #covariate models related to prob of success or of producing two chicks
+          logit( tau1[ i, k ] ) <- alpha1 
+                            + alpha2 * waterdist[ i ]  
+                            + zeta[ k ] + IDzeta[ i ]
+
+          logit( tau2[ i, k ] ) <- beta1 
+                            + beta2 * waterdist[ i ] 
+                            + eta[ k ] + IDeta[ i ]
+
+          #define reproductive state probabilities:
+          pi[ i, k, 1 ] <- tau1[ i, k ] * ( 1 - tau2[ i, k ] ) #prob( r = 1 ) #prob nest produced one chick
+          pi[ i, k, 2 ] <- tau1[ i, k ] * tau2[ i, k ] #prob( r = 2 ) prob nest produced two chicks
+          pi[ i, k, 3 ] <- ( 1 - tau1[ i, k ] ) #prob( r = 3 ) prob nest failed to reproduce
+
+          #calculate Bayesian p values:
+          #predict reproductve data:
+          rmat_hat[ i, k ] ~ dcat( piz[ i, k, 1:3 ] )
+          
+          # calculate log likelihood for each data point:
+          logL.rmat[ i, k ] <- logdensity.cat( r_mat[ i, k ], piz[ i, k, 1:3 ] )
+          logL.rmat_hat[ i, k ] <- logdensity.cat( rmat_hat[ i, k ], piz[ i, k, 1:3 ] )
+     
+        } #i
+
+        for ( i in 1: surveyedM[ k ] ) { #loop over non-surveyed nests
+     
+          #define reproductive state conditional on occupancy so use pi if z=1 or set to prob of fail = 1 (failprob) if z=0
+          piz[  MM[ i, k ], k, 1:3 ] <- ifelse( z[ MM[ i, k ], k ] == 1,
+                                        pi[ MM[ i, k ], k, 1:3 ], failprob[ 1:3 ] )
+          r_mat[ MM[ i, k ], k ] ~ dcat( piz[ MM[ i, k ], k, 1:3 ] )
+          #esimated nest success:
+          sucnest[ MM[ i, k ], k ] ~ dbern( tau1[  MM[ i, k ], k ] * z[ MM[ i, k ], k ] ) #estimated number of successful nests
+          nest.2Y[ MM[ i, k ], k ] ~ dbern( piz[  MM[ i, k ], k , 2 ] ) #estimated number of highly successful nests with >2 chicks
+
+        } #i
+        for ( i in 1: notM[ k ] ) { #loop over non-surveyed nests
+          piz[ notMM[ i, k ], k, 1:3 ] <- failprob[ 1:3 ] 
+          sucnest[ notMM[ i, k ], k ] ~ dbern( 0 ) #estimated number of successful nests
+          nest.2Y[ notMM[ i, k ], k ] ~ dbern( 0 ) #estimated number of successful nests with 2 chicks
+          r_mat[ notMM[ i, k ], k ] ~ dcat( failprob[ 1:3 ] )
+        } #i 
+      } #k
+     
+      #observation model for nest occupancy
+      for ( k in detK1:K ){ #loop over seasons of detailed data
+        for ( i in 1:M ){  #loop over surveyed nests
+          for ( j in 1:J ){ #loop over replicate surveys
+     
+            y_obs[ i, j, k ] ~ dbern( z[ i, k ] * p ) 
+
+            #calculate likelihood p[y|z==1] for each j, which is converted to 1 if not sampled (by ^Jik ):
+            #for observed data
+            y_obs.p[ i, j, k ] <- ( p^y_obs[ i, j, k ] * ( 1 - p )^( 1 - y_obs[ i, j, k ] ) )^ Jik[ i, j, k ]
+            #for simulated data:
+            y_hat.p[ i, j, k ] <- ( p^y_hat[ i, j, k ] * ( 1 - p )^( 1 - y_hat[ i, j, k ] ) )^ Jik[ i, j, k ]
+                                  
+
+          }#close j loop
+
+        #integrated log likelihood for each site and season:
+        #for observed data  
+        logL.y_obs[ i, k ] <- log( ysum[ i, k ] * psi[ i, k ] * prod( y_obs.p[ i, 1:J ,k ] ) 
+                  + ( 1- ysum[ i, k ] ) * ( ( 1 - psi[ i, k ] ) + psi[ i, k ] * prod( y_obs.p[ i, 1:J ,k ] ) ) )
+         #for simulated data:
+        logL.y_hat[ i, k ] <- log( ifelse( sum( y_hat[ i, 1:J, k ] * Jik[ i, 1:J, k ] ) > 0,
+                              psi[ i, k ] * prod( y_hat.p[ i, 1:J ,k ] ),
+                            ( 1 - psi[ i, k ] ) + psi[ i, k ] * prod( y_hat.p[ i, 1:J ,k ] ) ) )
+      } #close i loop
+     }  #close k loop
+     
+      for ( k in 1:( detK1-1 ) ) { #loop over seasons of summary data
+     
+        det[ k ] <- pow( p, maxvis[ k ] )# 4 ) #
+     
+        for ( i in 1:M ){  #loop over surveyed nests
+     
+          y_obs[ i, 1, k ] ~ dbern(  z[ i, k ] * det[ k ]  ) 
+
+          # calculate log likelihood for summary data (survey 1 only):
+          logL.y_obs[ i, k ] <- log( psi[ i, k ] * det[ k ]^y_obs[ i, 1, k ] * 
+                              ( 1 - det[ k ] )^( 1 - y_obs[ i, 1, k ] )
+                              + ( 1 - psi[ i, k ] )  * ( 1 - y_obs[ i, 1, k ] ) ) #add prob unoccupied if undetected
+
+          logL.y_hat[ i, k ] <- log( psi[ i, k ] * det[ k ]^y_hat[ i, 1, k ] * 
+                                ( 1 - det[ k ] )^( 1 - y_hat[ i, 1, k ] )
+                                + ( 1 - psi[ i, k ] ) * ( 1 - y_hat[ i, 1, k ] ) )
+     
+        } #close i loop
+      }  #close k loop
+     
+      for ( k in 1:K ){ #loop over seasons of detailed data
+        for ( i in 1:M ){  #loop over surveyed nests
+          for ( j in 1:J ){ #loop over replicate surveys
+
+           # predict observed occupany to estimate Bayesian p-value:
+            y_hat[ i, j, k ] ~ dbern( z[ i, k ] * p ) 
+
+          } #close j loop
+        } #close i loop
+      }  #close k loop
+
+      #derived parameters:
+      for ( k in 1:K ){
+        n_occ[ k ] <- sum( z[ inVNPids, k ] )
+        mean_psi[ k ] <- mean( psi[ MM[ 1:surveyedM[ k ], k ], k ] )
+      } #k
+     
+      for ( k in 2:K ){
+        lambda[ k ] <- n_occ[ k ] / ifelse( n_occ[ k-1 ] == 0, 1E6, n_occ[ k-1 ] )
+        delta[ k ] <- n_occ [ k ] / n_occ[ 1 ]
+      } #k
+      #population-level parameters
+      for ( k in 1:K ){
+        sucnests[ k ] <- sum( sucnest[ inVNPids, k ] ) # number of successful nests inside VNP
+        repsucc[ k ] <- sucnests[ k ] / ifelse( n_occ[ k ] == 0, 1E6, n_occ[ k ] ) #nest success rate
+        chicks[ k ] <- ( sucnests[ k ] - sum( nest.2Y[ inVNPids, k ] ) ) +
+                    2 * sum( nest.2Y[ inVNPids, k ] ) #number of chicks produced inside VNP
+        prod[ k ] <- chicks[ k ] / ifelse( n_occ[ k ] == 0, 1E6, n_occ[ k ] ) #productivity rate
+        brood[ k ] <- chicks[ k ] / ifelse( sucnests[ k ] == 0, 1E6, sucnests[ k ] ) #mean brood size
+      } #k
+     
+      ### measures of model and parameter fit #####
+      #measures to calculate Bayesian p value:    
+      # sum yearly log-likelihood across surveyed sites:
+      for ( k in 1:K ){
+        ll.y_obs[ k ] <- sum( logL.y_obs[ MM[ 1:surveyedM[ k ], k ], k ] ) #sum log-ll across observed occupancy data
+        ll.y_hat[ k ] <- sum( logL.y_hat[ MM[ 1:surveyedM[ k ], k ], k ] ) #sum log-ll across predicted occupancy data
+        ll.rmat[ k ] <- sum( logL.rmat[ MM[ 1:surveyedM[ k ], k ], k ] ) #sum log-ll across observed reproductive data
+        ll.rmat_hat[ k ] <- sum( logL.rmat_hat[ MM[ 1:surveyedM[ k ], k ], k ] ) #sum log-ll across predicted reproductive data
+      }
+     
+     } #model close
+     
+     
