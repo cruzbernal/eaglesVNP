@@ -103,13 +103,13 @@
           pi[ i, k, 2 ] <- tau1[ i, k ] * tau2[ i, k ] #prob( r = 2 ) prob nest produced two chicks
           pi[ i, k, 3 ] <- ( 1 - tau1[ i, k ] ) #prob( r = 3 ) prob nest failed to reproduce
 
-          #calculate Bayesian p values:
+          #calculate deviance difference between real and predicted data:
           #predict reproductve data:
           rmat_hat[ i, k ] ~ dcat( piz[ i, k, 1:3 ] )
           
           # calculate log likelihood for each data point:
-          logL.rmat[ i, k ] <- logdensity.cat( r_mat[ i, k ], piz[ i, k, 1:3 ] )
-          logL.rmat_hat[ i, k ] <- logdensity.cat( rmat_hat[ i, k ], piz[ i, k, 1:3 ] )
+          logL.rmat[ i, k ] <- logdensity.cat( r_mat[ i, k ], piz[ i, k, 1:3 ] ) #real
+          logL.rmat_hat[ i, k ] <- logdensity.cat( rmat_hat[ i, k ], piz[ i, k, 1:3 ] ) #predicted
      
         } #i
 
@@ -121,13 +121,13 @@
           r_mat[ MM[ i, k ], k ] ~ dcat( piz[ MM[ i, k ], k, 1:3 ] )
           #esimated nest success:
           sucnest[ MM[ i, k ], k ] ~ dbern( tau1[  MM[ i, k ], k ] * z[ MM[ i, k ], k ] ) #estimated number of successful nests
-          nest.2Y[ MM[ i, k ], k ] ~ dbern( piz[  MM[ i, k ], k , 2 ] ) #estimated number of highly successful nests with >2 chicks
+          nest.2Y[ MM[ i, k ], k ] ~ dbern( piz[  MM[ i, k ], k , 2 ] ) #estimated number of highly successful nests (>=2 chicks)
 
         } #i
         for ( i in 1: notM[ k ] ) { #loop over non-surveyed nests
           piz[ notMM[ i, k ], k, 1:3 ] <- failprob[ 1:3 ] 
-          sucnest[ notMM[ i, k ], k ] ~ dbern( 0 ) #estimated number of successful nests
-          nest.2Y[ notMM[ i, k ], k ] ~ dbern( 0 ) #estimated number of successful nests with 2 chicks
+          sucnest[ notMM[ i, k ], k ] ~ dbern( 0 ) 
+          nest.2Y[ notMM[ i, k ], k ] ~ dbern( 0 ) 
           r_mat[ notMM[ i, k ], k ] ~ dcat( failprob[ 1:3 ] )
         } #i 
       } #k
@@ -183,7 +183,7 @@
         for ( i in 1:M ){  #loop over surveyed nests
           for ( j in 1:J ){ #loop over replicate surveys
 
-           # predict observed occupany to estimate Bayesian p-value:
+           # predict observed occupany for deviance estimates:
             y_hat[ i, j, k ] ~ dbern( z[ i, k ] * p ) 
 
           } #close j loop
@@ -210,8 +210,8 @@
         brood[ k ] <- chicks[ k ] / ifelse( sucnests[ k ] == 0, 1E6, sucnests[ k ] ) #mean brood size
       } #k
      
-      ### measures of model and parameter fit #####
-      #measures to calculate Bayesian p value:    
+      ### measures of model fit #####
+      #to calculate yearly deviance difference:    
       # sum yearly log-likelihood across surveyed sites:
       for ( k in 1:K ){
         ll.y_obs[ k ] <- sum( logL.y_obs[ MM[ 1:surveyedM[ k ], k ], k ] ) #sum log-ll across observed occupancy data
