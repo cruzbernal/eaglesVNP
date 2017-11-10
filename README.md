@@ -1,6 +1,5 @@
 # eaglesVNP
-JAGs code used by Cruz et al. (in review) 'Management of a recovering apex predator: from individual nest protection to 
-population growth of bald eagles Haliaeetus leucocephalus' Submitted to Journal of Applied Ecology.
+JAGs code used by Cruz et al. (in press) 'Managing individual nests promotes population recovery of a top predator' Journal of Applied Ecology.
 
 The code describes an Integrated Population Model (IPM) evaluating the recovery of bald eagles in Voyageurs National Park 
 during 1973-2016. The IPM integrates nest occupancy and reproductive output data to estimate nest-level probabilities of occupancy, 
